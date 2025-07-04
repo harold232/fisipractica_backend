@@ -1,7 +1,7 @@
 import { HttpService } from '@nestjs/axios';
 import { HttpException, InternalServerErrorException } from '@nestjs/common';
 import {
-  ConnectedSocket,
+  // ConnectedSocket,
   MessageBody,
   SubscribeMessage,
   WebSocketGateway,
@@ -25,10 +25,12 @@ export class ChatGateway {
   socketMap = new Map<string, { user_id: number }>();
 
   handleConnection(client: Socket) {
+    const { from, to, chat_id, job_id } = client.handshake.query;
     console.log(`Client connected: ${client.id}`);
     console.log(client.handshake.query.from);
+    console.log(from, to, chat_id, job_id);
     this.socketMap.set(client.id, {
-      user_id: client.handshake.query.from ? +client.handshake.query.from : 0,
+      user_id: from ? +from : 0,
     });
 
     console.log(this.socketMap);
@@ -42,11 +44,15 @@ export class ChatGateway {
 
   @SubscribeMessage('student-message')
   async handleStudentMessage(
-    @MessageBody() data: string,
-    @ConnectedSocket() client: Socket,
-  ): Promise<string> {
+    @MessageBody('from') from: string,
+    @MessageBody('to') to: string,
+    @MessageBody('company') company: string,
+    @MessageBody('chat_id') chat_id: string,
+    @MessageBody('job_id') job_id: string,
+    @MessageBody('mensaje') data: string,
+    // @ConnectedSocket() client: Socket,
+  ): Promise<string | void> {
     try {
-      const { from, to, chat_id, job_id } = client.handshake.query;
       console.log(from, to);
 
       console.log(`Mensaje: ${data}.`);
@@ -89,23 +95,33 @@ export class ChatGateway {
 
       return 'Hello world!';
     } catch (error) {
-      console.error(error.message);
       if (error instanceof HttpException) {
         throw error;
       }
+      if (error instanceof Error) {
+        console.error(error.message);
+        throw new InternalServerErrorException(
+          `Error interno al enviar el mensaje: ${error.message}`,
+        );
+      }
+      console.error('Error desconocido:', error);
       throw new InternalServerErrorException(
-        `Error interno al enviar el mensaje: ${error.message}`,
+        `Error interno al enviar el mensaje`,
       );
     }
   }
 
   @SubscribeMessage('recruiter-message')
   async handleRecruiterMessage(
-    @MessageBody() data: string,
-    @ConnectedSocket() client: Socket,
+    @MessageBody('from') from: string,
+    @MessageBody('to') to: string,
+    @MessageBody('company') company: string,
+    @MessageBody('chat_id') chat_id: string,
+    @MessageBody('job_id') job_id: string,
+    @MessageBody('mensaje') data: string,
+    // @ConnectedSocket() client: Socket,
   ): Promise<string> {
     try {
-      const { from, to, chat_id, job_id } = client.handshake.query;
       console.log(from, to);
 
       console.log(`Mensaje: ${data}.`);
@@ -146,22 +162,34 @@ export class ChatGateway {
 
       return 'Hello world!';
     } catch (error) {
-      console.error(error.message);
       if (error instanceof HttpException) {
         throw error;
       }
+      if (error instanceof Error) {
+        console.error(error.message);
+        throw new InternalServerErrorException(
+          `Error interno al enviar el mensaje: ${error.message}`,
+        );
+      }
+      console.error('Error desconocido:', error);
       throw new InternalServerErrorException(
-        `Error interno al enviar el mensaje: ${error.message}`,
+        `Error interno al enviar el mensaje`,
       );
     }
   }
 
   @SubscribeMessage('message')
   async handleChatBot(
-    @MessageBody() data: string,
-    @ConnectedSocket() client: Socket,
+    @MessageBody('from') from: string,
+    @MessageBody('company') company: string,
+    @MessageBody('chat_id') chat_id: string,
+    @MessageBody('job_id') job_id: string,
+    @MessageBody('mensaje') data: string,
+    // @ConnectedSocket() client: Socket,
   ): Promise<string> {
-    const { from, to, chat_id, job_id } = client.handshake.query;
+    /* 
+    console.log(`Mensaje: ${data}.`); */ /* 
+    const { from, company, chat_id, job_id } = JSON.parse(data); */
 
     let newChatId = '';
     try {
@@ -195,8 +223,8 @@ export class ChatGateway {
         {
           role: 'system',
           content:
-            `You are a helpful virtual assistant specialized in the company ${String(to)}.\n` +
-            `If asked about another topic, simply respond that you can only answer questions related to ${String(to)}.\n` +
+            `You are a helpful virtual assistant specialized in the company ${String(company)}.\n` +
+            `If asked about another topic, simply respond that you can only answer questions related to ${String(company)}.\n` +
             `If you don't know the answer to a question, please respond with 'In this case, I cannot provide accurate information'.\n` +
             `Do not make up answers. If you don't know the answer, please say so. Always use polite and professional language.` +
             `Respond strictly in Spanish with precision and honesty.`,
@@ -208,10 +236,20 @@ export class ChatGateway {
       .filter(([, value]) => value.user_id === +(from ?? 0))
       .map(([key]) => key);
 
+    interface ChatBotResponse {
+      data: {
+        choices: {
+          message: {
+            content: string;
+          };
+        }[];
+      };
+    }
+
     if (newChatId) {
       this.server.to(sockets).emit('message', newChatId);
     } else {
-      const response = await firstValueFrom(
+      const response: ChatBotResponse = await firstValueFrom(
         this.httpService
           .post(url, body, {
             headers: {
@@ -219,13 +257,19 @@ export class ChatGateway {
             },
           })
           .pipe(
-            catchError((error) => {
-              console.error('Error:', error.message);
+            catchError((error: any) => {
               if (error instanceof HttpException) {
                 throw error;
               }
+              if (error instanceof Error) {
+                console.error('Error:', error.message);
+                throw new InternalServerErrorException(
+                  `Error interno al enviar el mensaje: ${error.message}`,
+                );
+              }
+              console.error('Error desconocido:', error);
               throw new InternalServerErrorException(
-                `Error interno al enviar el mensaje: ${error.message}`,
+                `Error interno al enviar el mensaje`,
               );
             }),
           ),
