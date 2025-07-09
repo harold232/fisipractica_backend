@@ -13,6 +13,7 @@ import { CompanyModule } from './company/company.module';
 import { JobModule } from './job/job.module';
 import { MessageModule } from './message/message.module';
 import { MinioModule } from './minio/minio.module';
+import { StudentModule } from './student/student.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { MinioModule } from './minio/minio.module';
     JobModule,
     MessageModule,
     MinioModule,
+    StudentModule,
   ],
   controllers: [AppController],
   providers: [AppService],

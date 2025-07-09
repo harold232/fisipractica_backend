@@ -1,0 +1,300 @@
+import {
+  ConflictException,
+  HttpException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcrypt';
+import { DataSource, Repository } from 'typeorm';
+import { MinioService } from '../minio/minio.service';
+import { User } from '../user/entities/user.entity';
+import { Role } from '../user/enums/role.enum';
+import { CreateStudentDto } from './dto/create-student.dto';
+import { UpdateStudentDto } from './dto/update-student.dto';
+import { Skill } from './entities/skill.entity';
+import { Student } from './entities/student.entity';
+import { StudentSkill } from './entities/student_skill.entity';
+
+@Injectable()
+export class StudentService {
+  constructor(
+    @InjectRepository(Student)
+    private readonly studentRepository: Repository<Student>,
+    private readonly dataSource: DataSource,
+    private readonly minioService: MinioService,
+  ) {}
+
+  async create(
+    createStudentDto: CreateStudentDto,
+    photo: Express.Multer.File[],
+    cv: Express.Multer.File[],
+  ) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const userExists = await queryRunner.manager.findOne(User, {
+        where: { email: createStudentDto.email, role: Role.STUDENT },
+      });
+      if (userExists) {
+        throw new ConflictException('El usuario ya existe');
+      }
+      console.log('createStudentDto:', createStudentDto);
+      // Crea un nuevo usuario estudiante
+      const saltOrRounds = 10;
+      const hashedpassword = await bcrypt.hash(
+        createStudentDto.password,
+        saltOrRounds,
+      );
+      createStudentDto.password = hashedpassword;
+      const user = queryRunner.manager.create(User, {
+        email: createStudentDto.email,
+        password: createStudentDto.password,
+        role: Role.STUDENT,
+        first_name: createStudentDto.first_name,
+        last_name: createStudentDto.last_name,
+        phone: createStudentDto.phone,
+        location: createStudentDto.location,
+        photo: photo ? photo[0].buffer : undefined,
+      });
+      const savedUser = await queryRunner.manager.save(user);
+
+      // Crea un nuevo estudiante
+      const student = queryRunner.manager.create(Student, {
+        user: savedUser,
+        institution: createStudentDto.institution,
+        education_start_date: createStudentDto.education_start_date,
+        education_end_date: createStudentDto.education_end_date,
+        description: createStudentDto.description,
+        availability: createStudentDto.availability,
+      });
+
+      // Sube el archivo al servidor Minio
+      if (cv) {
+        const fileBuffer = Buffer.isBuffer(cv[0].buffer)
+          ? cv[0].buffer
+          : Buffer.from(cv[0].buffer);
+
+        const url = await this.minioService.uploadFile(
+          'student-files',
+          cv[0].originalname,
+          fileBuffer,
+          'pdf',
+        );
+        student.cv_url = url;
+      }
+      const savedStudent = await queryRunner.manager.save(student);
+      // Busca skills
+      if (createStudentDto.skills) {
+        const Skills = new Array<Skill>();
+        const skillsArray = createStudentDto.skills
+          .split(',')
+          .map((skill) => skill.trim());
+        for (const skill of skillsArray) {
+          const foundedSkill = await queryRunner.manager.findOne(Skill, {
+            where: { name: skill },
+          });
+          let studentSkill: StudentSkill;
+          if (foundedSkill) {
+            Skills.push(foundedSkill);
+            studentSkill = queryRunner.manager.create(StudentSkill, {
+              student: savedStudent,
+              skill: foundedSkill,
+            });
+          } else {
+            const newSkill = queryRunner.manager.create(Skill, { name: skill });
+            const savedSkill = await queryRunner.manager.save(newSkill);
+            Skills.push(savedSkill);
+            studentSkill = queryRunner.manager.create(StudentSkill, {
+              student: savedStudent,
+              skill: savedSkill,
+            });
+          }
+          await queryRunner.manager.save(studentSkill);
+        }
+      }
+      await queryRunner.commitTransaction();
+      return savedStudent;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error(error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        'Error interno al crear estudiante.',
+      );
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async findAll() {
+    try {
+      return await this.studentRepository.find({
+        relations: ['user', 'skills'],
+      });
+    } catch (error) {
+      console.error(error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        'Error interno al listar estudiantes',
+      );
+    }
+  }
+
+  async findOne(id: number) {
+    try {
+      const student = await this.studentRepository.findOne({
+        where: { id },
+        relations: ['user', 'skills'],
+      });
+      if (!student) {
+        throw new NotFoundException('Estudiante no encontrado');
+      }
+      return student;
+    } catch (error) {
+      console.error(error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        'Error interno al buscar estudiante',
+      );
+    }
+  }
+
+  async update(
+    id: number,
+    updateStudentDto: UpdateStudentDto,
+    photo: Express.Multer.File,
+  ) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      // Actualiza perfil de usuario
+      const student = await queryRunner.manager.findOne(Student, {
+        where: { id },
+        relations: ['user'],
+      });
+      if (!student) {
+        throw new NotFoundException('Estudiante no encontrado');
+      }
+      const user = await queryRunner.manager.findOne(User, {
+        where: { id: student.user.id },
+      });
+      if (!user) {
+        throw new NotFoundException('Usuario no encontrado');
+      }
+      const userDto = {
+        first_name: updateStudentDto.first_name,
+        last_name: updateStudentDto.last_name,
+        email: updateStudentDto.email,
+        phone: updateStudentDto.phone,
+        location: updateStudentDto.location,
+        photo: photo ? photo.buffer : user.photo,
+      };
+      queryRunner.manager.merge(User, user, userDto);
+      await queryRunner.manager.save(user);
+      // Actualiza datos de estudiante
+      const studentDto = {
+        institution: updateStudentDto.institution,
+        education_start_date: updateStudentDto.education_start_date,
+        education_end_date: updateStudentDto.education_end_date,
+        studying: updateStudentDto.studying,
+        description: updateStudentDto.description,
+        availability: updateStudentDto.availability,
+      };
+      queryRunner.manager.merge(Student, student, studentDto);
+      const savedStudent = await queryRunner.manager.save(student);
+      // Busca skills
+      if (updateStudentDto.skills) {
+        const Skills = new Array<Skill>();
+        const skillsArray = updateStudentDto.skills
+          .split(',')
+          .map((skill) => skill.trim());
+        for (const skill of skillsArray) {
+          const foundedSkill = await queryRunner.manager.findOne(Skill, {
+            where: { name: skill },
+          });
+          let studentSkill: StudentSkill;
+          if (foundedSkill) {
+            const relationExists = await queryRunner.manager.findOne(
+              StudentSkill,
+              { where: { student: savedStudent, skill: foundedSkill } },
+            );
+            if (relationExists) {
+              continue;
+            }
+            Skills.push(foundedSkill);
+            studentSkill = queryRunner.manager.create(StudentSkill, {
+              student: savedStudent,
+              skill: foundedSkill,
+            });
+          } else {
+            const newSkill = queryRunner.manager.create(Skill, { name: skill });
+            const savedSkill = await queryRunner.manager.save(newSkill);
+            Skills.push(savedSkill);
+            studentSkill = queryRunner.manager.create(StudentSkill, {
+              student: savedStudent,
+              skill: savedSkill,
+            });
+          }
+          await queryRunner.manager.save(studentSkill);
+        }
+      }
+      await queryRunner.commitTransaction();
+      return student;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error(error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        'Error interno al actualizar estudiante.',
+      );
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async remove(id: number): Promise<{ message: string }> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      //Eliminar estudiantes y sus habilidades
+      const student = await queryRunner.manager.findOne(Student, {
+        where: { id },
+        relations: ['skills', 'user'],
+      });
+      if (!student) {
+        throw new NotFoundException('Estudiante no encontrado');
+      }
+      await queryRunner.manager.delete(StudentSkill, student.skills);
+      await queryRunner.manager.delete(User, student.user);
+      await queryRunner.manager.delete(Student, student);
+      await queryRunner.commitTransaction();
+      return {
+        message: 'Estudiante eliminado correctamente',
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      console.error(error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        'Error interno al eliminar estudiante.',
+      );
+    } finally {
+      await queryRunner.release();
+    }
+  }
+}
