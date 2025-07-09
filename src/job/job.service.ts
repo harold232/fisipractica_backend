@@ -1,5 +1,4 @@
 import {
-  ConflictException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -7,11 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { Company } from '../company/entities/company.entity';
+import { UserProfile } from '../user/entities/user_profile.entity';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { Job } from './entities/job.entity';
-import { Company } from 'src/company/entities/company.entity';
-import { UserProfile } from 'src/user/entities/user_profile.entity';
 
 @Injectable()
 export class JobService {

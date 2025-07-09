@@ -1,5 +1,4 @@
 import { Job } from 'src/job/entities/job.entity';
-import { UserProfile } from 'src/user/entities/user_profile.entity';
 import {
   Column,
   CreateDateColumn,
@@ -10,6 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { ApplicationStatus } from '../enums/application.enum';
+import { UserProfile } from 'src/user/entities/user_profile.entity';
 
 @Entity()
 export class Application {
