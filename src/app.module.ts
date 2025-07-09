@@ -5,6 +5,14 @@ import { UserModule } from './user/user.module';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from './user/entities/user.entity';
+import { RecruitModule } from './recruit/recruit.module';
+import { ApplicationModule } from './application/application.module';
+import { AuthModule } from './auth/auth.module';
+import { ChatModule } from './chat/chat.module';
+import { CompanyModule } from './company/company.module';
+import { JobModule } from './job/job.module';
+import { MessageModule } from './message/message.module';
+import { MinioModule } from './minio/minio.module';
 
 @Module({
   imports: [
@@ -20,6 +28,14 @@ import { User } from './user/entities/user.entity';
       synchronize: true,
     }),
     UserModule,
+    RecruitModule,
+    ApplicationModule,
+    AuthModule,
+    ChatModule,
+    CompanyModule,
+    JobModule,
+    MessageModule,
+    MinioModule,
   ],
   controllers: [AppController],
   providers: [AppService],
