@@ -5,11 +5,11 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  ManyToOne,
   JoinColumn,
+  ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
-  OneToMany,
 } from 'typeorm';
 
 @Entity()
