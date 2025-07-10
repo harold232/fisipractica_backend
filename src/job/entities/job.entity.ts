@@ -1,15 +1,15 @@
-import { Application } from 'src/application/entities/application.entity';
-import { Company } from 'src/company/entities/company.entity';
-import { UserProfile } from 'src/user/entities/user_profile.entity';
+import { Application } from '../../application/entities/application.entity';
+import { Company } from '../../company/entities/company.entity';
+import { UserProfile } from '../../user/entities/user_profile.entity';
 import {
   Column,
   CreateDateColumn,
   Entity,
-  ManyToOne,
   JoinColumn,
+  ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
-  OneToMany,
 } from 'typeorm';
 
 @Entity()
