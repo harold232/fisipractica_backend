@@ -14,6 +14,7 @@ import { JobModule } from './job/job.module';
 import { MessageModule } from './message/message.module';
 import { MinioModule } from './minio/minio.module';
 import { StudentModule } from './student/student.module';
+import { RecruiterModule } from './recruiter/recruiter.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { StudentModule } from './student/student.module';
     MessageModule,
     MinioModule,
     StudentModule,
+    RecruiterModule,
   ],
   controllers: [AppController],
   providers: [AppService],
